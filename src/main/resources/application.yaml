@@ -1,0 +1,30 @@
+server:
+  port: 8080
+
+# KNOWN TRAP: there is deliberately NO spring.datasource block here.
+# With com.h2database:h2 on the classpath and no url configured,
+# DataSourceAutoConfiguration builds an embedded in-memory H2, and
+# HibernateDefaultDdlAutoProvider returns "create-drop" for any embedded
+# DataSource (verified in the 3.5.16 bytecode). Spelling out the url and
+# ddl-auto by hand adds two more things that can drift and changes nothing.
+spring:
+  h2:
+    console:
+      enabled: true      # /h2-console, for the live demo only
+  jpa:
+    open-in-view: false  # silences the startup warning and keeps the tx boundary inside the service
+    # DDL and statements are logged on purpose: the generated "create table
+    # countries" with its unique constraint is the fastest proof, during the
+    # interview, that the entity mapping is what we claim it is.
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+# Bound by WorldBankProperties and turned into the RestClient in RestClientConfig.
+# This is the only place the provider's address and the timeouts are written down:
+# no business class knows either of them.
+worldbank:
+  base-url: https://api.worldbank.org/v2
+  connect-timeout: 2s
+  read-timeout: 5s

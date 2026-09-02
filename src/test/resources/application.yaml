@@ -1,0 +1,22 @@
+# Test-only configuration. This file shadows src/main/resources/application.yaml
+# on the test classpath, so everything the tests need has to be here.
+#
+# KNOWN TRAP: base-url points at port 9 (the standard discard port) on purpose.
+# It is what guarantees that no test can reach the real World Bank API - if a
+# collaborator is ever left unfaked by accident, the call fails locally in
+# milliseconds instead of silently succeeding over the network. A test suite that
+# quietly depends on the internet passes on a laptop and fails in CI, and its
+# results mean nothing either way.
+worldbank:
+  base-url: http://localhost:9/v2
+  # Short on purpose: nothing is listening, so this is how long a leaked call
+  # costs the build. Long enough not to be flaky on a loaded machine.
+  connect-timeout: 200ms
+  read-timeout: 200ms
+
+spring:
+  jpa:
+    open-in-view: false
+    # Silenced here, unlike in the main profile: the generated DDL is a
+    # demo aid, and in a test run it is just noise around the assertions.
+    show-sql: false
