@@ -1,0 +1,211 @@
+===============================================================================
+ COUNTRIES SERVICE - COMANDOS PARA CORRER Y PROBAR
+===============================================================================
+
+Requisito unico: JDK 17 o superior. Maven NO hace falta, el wrapper (./mvnw) se
+encarga. La base es H2 en memoria: se crea al arrancar y muere con la app, no
+hay que instalar ni configurar nada.
+
+
+-------------------------------------------------------------------------------
+ 1. CORRER LA APLICACION
+-------------------------------------------------------------------------------
+
+  ./mvnw spring-boot:run
+
+Queda escuchando en http://localhost:8080
+Esperar en el log la linea:  Started CountriesApplication
+
+En Windows CMD o PowerShell, si ./mvnw no funciona, usar:  mvnw spring-boot:run
+
+NOTA: spring-boot:run forkea la JVM. Si se corta Maven con Ctrl+C el proceso
+hijo puede quedar tomando el puerto 8080. Para liberarlo:
+
+  netstat -ano | findstr :8080          (Windows, anotar el PID de la ultima columna)
+  taskkill /PID <pid> /F
+
+  lsof -ti:8080 | xargs kill -9         (Linux / macOS)
+
+
+-------------------------------------------------------------------------------
+ 2. CORRER LOS TESTS
+-------------------------------------------------------------------------------
+
+  ./mvnw clean verify        compila y corre la suite completa (21 tests)
+  ./mvnw -B test             solo los tests
+
+Ningun test toca la red real. Hay dobles de prueba escritos a mano y, como
+segunda capa, src/test/resources/application.yaml apunta la URL externa al
+puerto 9 (discard), asi que una llamada filtrada falla en milisegundos en vez
+de colgarse. Se puede comprobar:
+
+  ./mvnw -B clean test 2>&1 | grep -ci "api.worldbank.org"      -> debe dar 0
+
+
+-------------------------------------------------------------------------------
+ 3. PROBAR LOS ENDPOINTS (con la app corriendo)
+-------------------------------------------------------------------------------
+
+--- RF-1: POST /api/countries/import?code={code} ---
+
+Primera importacion -> 201 CREATED
+
+  curl -i -X POST "http://localhost:8080/api/countries/import?code=CO"
+
+Reimportacion del mismo codigo -> 200 OK, mismo id, sin fila duplicada
+(la operacion es idempotente)
+
+  curl -i -X POST "http://localhost:8080/api/countries/import?code=CO"
+
+Los otros codigos de la tabla del enunciado -> 201 cada uno
+
+  curl -i -X POST "http://localhost:8080/api/countries/import?code=PE"
+  curl -i -X POST "http://localhost:8080/api/countries/import?code=MX"
+  curl -i -X POST "http://localhost:8080/api/countries/import?code=ES"
+  curl -i -X POST "http://localhost:8080/api/countries/import?code=JP"
+
+Tambien acepta codigos alpha-3 y minusculas: pedir "col" o "COL" actualiza la
+misma fila que "CO", porque se archiva por el iso2Code que devuelve la API y
+se normaliza a mayusculas.
+
+  curl -i -X POST "http://localhost:8080/api/countries/import?code=col"
+
+
+--- Casos de error de RF-1 ---
+
+Codigo bien formado que no existe -> 404
+(OJO: la API del World Bank contesta esto con HTTP 200, ver seccion 5)
+
+  curl -i -X POST "http://localhost:8080/api/countries/import?code=ZZ"
+  -> 404  {"detail":"Country ZZ not found"}
+
+Formato invalido -> 400
+
+  curl -i -X POST "http://localhost:8080/api/countries/import?code=1"
+  -> 400  {"detail":"code must be 2 or 3 alphabetic characters"}
+
+Parametro ausente -> 400
+
+  curl -i -X POST "http://localhost:8080/api/countries/import"
+  -> 400
+
+
+--- RF-2: GET /api/countries ---
+
+200 con un array JSON. Devuelve [] (no un 404) si todavia no se importo nada.
+
+  curl -s "http://localhost:8080/api/countries"
+
+
+--- RF-3: GET /api/countries/{id} ---
+
+  curl -i "http://localhost:8080/api/countries/1"       -> 200 con el pais
+  curl -i "http://localhost:8080/api/countries/9999"    -> 404
+
+
+--- Extras ---
+
+  curl -s "http://localhost:8080/v3/api-docs"           especificacion OpenAPI
+
+  Swagger UI:    http://localhost:8080/swagger-ui.html
+  Consola H2:    http://localhost:8080/h2-console
+                 (la URL JDBC exacta sale en el log de arranque: es aleatoria
+                  porque no se declara datasource a mano)
+
+
+-------------------------------------------------------------------------------
+ 4. PROBAR EL 502 SIN DESCONECTAR INTERNET
+-------------------------------------------------------------------------------
+
+Se apunta la URL externa a un puerto muerto por argumento. Esto demuestra dos
+cosas a la vez: que el 502 funciona, y que la URL es configurable y no esta
+hardcodeada en ninguna clase de negocio (requisito explicito del enunciado).
+
+  ./mvnw spring-boot:run -Dspring-boot.run.arguments="--server.port=8099 --worldbank.base-url=http://localhost:9/v2"
+
+Y contra esa instancia:
+
+  curl -i -X POST "http://localhost:8099/api/countries/import?code=CO"
+  -> 502  {"detail":"World Bank API is unreachable"}
+
+
+-------------------------------------------------------------------------------
+ 5. VERIFICAR LA TRAMPA CENTRAL DEL EJERCICIO
+-------------------------------------------------------------------------------
+
+La API del World Bank devuelve sus errores con HTTP 200, no con 404:
+
+  curl -i "https://api.worldbank.org/v2/country/ZZ?format=json"
+
+  HTTP/1.1 200 OK
+  [{"message":[{"id":"120","key":"Invalid value",
+    "value":"The provided parameter value is not valid"}]}]
+
+Por eso el parseo discrimina por la FORMA del body y no por el status code: si
+el indice 0 trae "message" en vez de "page", el codigo no existe -> 404.
+
+Y la respuesta exitosa es una tupla heterogenea, [{metadatos}, [paises]], donde
+el indice 1 simplemente no esta cuando hay error:
+
+  curl -s "https://api.worldbank.org/v2/country/CO?format=json"
+
+
+-------------------------------------------------------------------------------
+ 6. SCRIPT QUE CORRE TODOS LOS CASOS DE UNA VEZ
+-------------------------------------------------------------------------------
+
+Con la app corriendo en 8080, pegar esto en una terminal bash (Git Bash sirve):
+
+  B="http://localhost:8080/api/countries"
+  p(){ printf "%-28s esperado %-4s obtenido %s\n" "$1" "$2" \
+       "$(curl -s -o /dev/null -w '%{http_code}' -X ${3:-POST} "$4")"; }
+  p "import CO (crea)"      201 POST "$B/import?code=CO"
+  p "import CO (actualiza)" 200 POST "$B/import?code=CO"
+  for c in PE MX ES JP; do p "import $c" 201 POST "$B/import?code=$c"; done
+  p "import ZZ (no existe)" 404 POST "$B/import?code=ZZ"
+  p "import 1 (invalido)"   400 POST "$B/import?code=1"
+  p "import sin code"       400 POST "$B/import"
+  p "GET lista"             200 GET  "$B"
+  p "GET /1"                200 GET  "$B/1"
+  p "GET /9999"             404 GET  "$B/9999"
+
+Salida esperada: las 12 lineas con "esperado" == "obtenido".
+
+
+-------------------------------------------------------------------------------
+ 7. TABLA DE CODIGOS DE RESPUESTA
+-------------------------------------------------------------------------------
+
+  201  el pais se creo
+  200  el pais ya existia y se actualizo / lectura correcta
+  400  code ausente, vacio, no alfabetico, o de longitud distinta de 2-3
+       tambien: id no numerico en GET /{id}
+  404  code bien formado pero el pais no existe / id inexistente
+  409  el pais choca con una fila existente (importacion concurrente).
+       Es 409 y no 502 a proposito: la API externa respondio bien, el
+       conflicto es nuestro.
+  502  API externa caida, con timeout, o con una respuesta no interpretable
+  500  red final: cualquier error no previsto. Devuelve un mensaje genérico
+       fijo, nunca el del excepcion, para no filtrar detalles internos.
+
+Todos los errores, sin excepcion, tienen la misma forma: {"detail":"..."}
+
+
+-------------------------------------------------------------------------------
+ 8. CONFIGURACION EXTERNALIZABLE
+-------------------------------------------------------------------------------
+
+En src/main/resources/application.yaml:
+
+  worldbank:
+    base-url: https://api.worldbank.org/v2
+    connect-timeout: 2s
+    read-timeout: 5s
+
+Ninguna clase de negocio conoce la URL ni los timeouts. Se pueden sobreescribir
+por argumento (--worldbank.base-url=...) o por variable de entorno
+(WORLDBANK_BASEURL=...) sin recompilar.
+
+Los timeouts no son un detalle: sin read-timeout, una API externa que acepta la
+conexion y no responde nunca deja hilos del servidor colgados hasta agotar el
+pool.
