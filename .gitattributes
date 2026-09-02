@@ -1,0 +1,12 @@
+# Los scripts de shell tienen que llegar con LF a cualquier maquina que clone.
+# Sin esto, un clon en Windows con core.autocrlf=true los recibe con CRLF, y
+# tanto ./mvnw como ./demo.sh mueren con "bad interpreter: /bin/sh^M" — el
+# entregable no arranca y la causa es invisible.
+* text=auto eol=lf
+
+mvnw     text eol=lf
+*.sh     text eol=lf
+
+# Estos son los unicos que quieren CRLF: los interpreta cmd.exe, no un shell.
+*.cmd    text eol=crlf
+*.bat    text eol=crlf

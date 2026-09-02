@@ -8,6 +8,33 @@ hay que instalar ni configurar nada.
 
 
 -------------------------------------------------------------------------------
+ ATAJO: MENU INTERACTIVO
+-------------------------------------------------------------------------------
+
+Todo lo que sigue esta automatizado en un menu. Si preferis no pegar comandos
+a mano:
+
+  ./demo.sh
+
+  1) Estado del entorno y de la app
+  2) Importar un pais (elegis el codigo)
+  3) Correr los casos del enunciado          -> imprime esperado vs obtenido
+  4) Ver los cuerpos de error
+  5) Probar el 502 con el upstream muerto    -> tambien prueba la URL configurable
+  6) Listar los paises importados            -> tabla formateada
+  7) Correr la suite de tests
+  8) Ver la trampa del HTTP 200 en vivo      -> contra la API real
+  9) Levantar la app
+  0) Bajar la app y salir
+
+Levanta la app solo si hace falta, y la baja por PID al salir (spring-boot:run
+forkea la JVM, asi que matar Maven deja el puerto tomado). No necesita jq.
+
+El resto de este archivo son los mismos comandos, uno por uno, para correrlos
+sueltos o para leer que hace cada cosa.
+
+
+-------------------------------------------------------------------------------
  1. CORRER LA APLICACION
 -------------------------------------------------------------------------------
 

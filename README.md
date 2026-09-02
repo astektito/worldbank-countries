@@ -17,6 +17,8 @@ Requiere **JDK 17+**. No hace falta tener Maven instalado: el wrapper (`./mvnw`)
 ./mvnw -B test           # solo los tests
 ```
 
+Para probarlo sin pegar comandos a mano hay un menú interactivo, `./demo.sh`, que levanta la app si hace falta, corre los casos del enunciado imprimiendo esperado vs obtenido, muestra los cuerpos de error, provoca el 502 contra un upstream muerto y baja todo al salir. Los comandos sueltos están en [`COMANDOS.txt`](COMANDOS.txt).
+
 Ningún test pega a la red real: hay dobles de prueba escritos a mano y, como segunda capa, `src/test/resources/application.yaml` apunta la URL externa al puerto discard (`http://localhost:9`), así que un descuido falla en milisegundos en lugar de colgarse.
 
 ## Endpoints
